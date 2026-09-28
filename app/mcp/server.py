@@ -18,6 +18,8 @@ from app.tool.base import BaseTool
 from app.tool.bash import Bash
 from app.tool.str_replace_editor import StrReplaceEditor
 from app.tool.terminate import Terminate
+from app.tool.planning import PlanningTool
+from app.tool.python_execute import PythonExecute
 
 
 class MCPServer:
@@ -31,6 +33,8 @@ class MCPServer:
         self.tools["bash"] = Bash()
         self.tools["editor"] = StrReplaceEditor()
         self.tools["terminate"] = Terminate()
+        self.tools["planning"] = PlanningTool()
+        self.tools["python_execute"] = PythonExecute()
 
     def register_tool(self, tool: BaseTool, method_name: Optional[str] = None) -> None:
         """Register a tool with parameter validation and documentation."""
