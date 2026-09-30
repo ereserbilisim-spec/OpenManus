@@ -1,4 +1,8 @@
 import multiprocessing
+
+# MCP server asyncio event loop içinde çalışırken fork deadlock yaratıyor.
+# spawn context kullanarak temiz child process oluştur:
+_MP_CTX = multiprocessing.get_context('spawn')
 import sys
 from io import StringIO
 from typing import Dict
@@ -52,13 +56,13 @@ class PythonExecute(BaseTool):
             Dict: Contains 'output' with execution output or error message and 'success' status.
         """
 
-        with multiprocessing.Manager() as manager:
+        with _MP_CTX.Manager() as manager:
             result = manager.dict({"observation": "", "success": False})
             if isinstance(__builtins__, dict):
                 safe_globals = {"__builtins__": __builtins__}
             else:
                 safe_globals = {"__builtins__": __builtins__.__dict__.copy()}
-            proc = multiprocessing.Process(
+            proc = _MP_CTX.Process(
                 target=self._run_code, args=(code, result, safe_globals)
             )
             proc.start()
