@@ -180,7 +180,15 @@ chmod 600 "$ENV_DIR/path.conf"
   echo "export NVIDIA_API_KEY=\"$NV_KEY\""
   echo "export MEM0_API_KEY=\"$MEM0_KEY\""
   echo "export TAVILY_API_KEY=\"$TAVILY_KEY\""
+  echo "export OPENROUTER_API_KEY=\"$OR_KEY\""
 } >> "$USER_HOME/.bashrc"
+
+# OPENROUTER_API_KEY systemd override (CAMEL + diğer MCP server'lar için)
+cat > "$ENV_DIR/openrouter-env.conf" <<EOF
+[Service]
+Environment="OPENROUTER_API_KEY=$OR_KEY"
+EOF
+chmod 600 "$ENV_DIR/openrouter-env.conf"
 
 systemctl --user daemon-reload
 ok "systemd env override'ları hazır."
@@ -244,6 +252,48 @@ if ! openclaw mcp list 2>/dev/null | grep -q openmanus; then
     --cwd "$USER_HOME/OpenManus" 2>/dev/null || warn "MCP ekleme başarısız, elle ekle: openclaw mcp add openmanus ..."
 fi
 ok "MCP köprüsü hazır."
+
+# ================================================================
+# 7.5 CAMEL-AI MCP KÖPRÜSÜ (rol simülasyonu, beyin fırtınası)
+# ================================================================
+log "CAMEL-AI MCP kuruluyor..."
+
+CAMEL_DIR="$USER_HOME/OpenManus/camel-mcp"
+CAMEL_WRAPPER="$USER_HOME/.local/bin/camel-mcp-run.sh"
+mkdir -p "$USER_HOME/.local/bin"
+
+if [ ! -f "$CAMEL_DIR/camel_mcp_server.py" ]; then
+    warn "camel_mcp_server.py fork'ta bulunamadı — CAMEL kurulumu atlanıyor"
+else
+    # venv
+    if [ ! -d "$CAMEL_DIR/.venv" ]; then
+        log "CAMEL-AI venv oluşturuluyor..."
+        python3 -m venv "$CAMEL_DIR/.venv"
+    fi
+    
+    # Bağımlılıklar (camel-ai + mcp 1.5.0 — FastMCP uyumlu sürüm)
+    "$CAMEL_DIR/.venv/bin/pip" install --upgrade -q pip setuptools wheel
+    log "CAMEL-AI + MCP paketleri kuruluyor (3-5 dk sürebilir)..."
+    "$CAMEL_DIR/.venv/bin/pip" install -q "camel-ai" "mcp==1.5.0"
+    
+    # Wrapper script — HOME ve CAMEL_DIR runtime'da genişler
+    cat > "$CAMEL_WRAPPER" <<'WRAPPER_EOF'
+#!/bin/bash
+export OPENROUTER_API_KEY="$(grep '^export OPENROUTER_API_KEY' "$HOME/.bashrc" | head -1 | cut -d'"' -f2)"
+exec "${CAMEL_DIR:-$HOME/OpenManus/camel-mcp}/.venv/bin/python" "${CAMEL_DIR:-$HOME/OpenManus/camel-mcp}/camel_mcp_server.py" 2>>/tmp/camel_stderr.log
+WRAPPER_EOF
+    chmod +x "$CAMEL_WRAPPER"
+    
+    # Wrapper'a CAMEL_DIR'i inject et
+    sed -i "s|\${CAMEL_DIR:-\$HOME/OpenManus/camel-mcp}|$CAMEL_DIR|g" "$CAMEL_WRAPPER"
+    
+    # OpenClaw'a MCP olarak ekle
+    if ! openclaw mcp list 2>/dev/null | grep -q "\bcamel\b"; then
+        openclaw mcp add camel --command "$CAMEL_WRAPPER" 2>/dev/null || \
+            warn "CAMEL MCP ekleme başarısız — elle: openclaw mcp add camel --command $CAMEL_WRAPPER"
+    fi
+    ok "CAMEL-AI MCP hazır."
+fi
 
 # ================================================================
 # 8. TELEGRAM KANALI
